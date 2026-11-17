@@ -24,6 +24,7 @@ const R = new THREE.WebGLRenderer({ canvas: $('c'), antialias: true });
 R.setPixelRatio(Math.min(devicePixelRatio, 2)); R.shadowMap.enabled = true; R.shadowMap.type = THREE.PCFSoftShadowMap;
 const scene = new THREE.Scene(); scene.background = new THREE.Color(0x8ec9ff); scene.fog = new THREE.Fog(0x8ec9ff, 45, 115);
 const cam = new THREE.PerspectiveCamera(60, 1, 0.1, 200);
+scene.add(cam);
 scene.add(new THREE.HemisphereLight(0xcfe8ff, 0x4a6b3a, 0.9));
 const sun = new THREE.DirectionalLight(0xfff0d0, 1.1); sun.position.set(25, 40, 15); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024);
 Object.assign(sun.shadow.camera, { left: -45, right: 45, top: 45, bottom: -45, near: 1, far: 120 }); scene.add(sun);
