@@ -29,7 +29,7 @@ const grass = canvasTex(128, 128, (g) => { g.fillStyle = '#4f8f3a'; g.fillRect(0
 grass.wrapS = grass.wrapT = THREE.RepeatWrapping; grass.repeat.set(40, 40);
 const ground = new THREE.Mesh(new THREE.PlaneGeometry(240, 240), new THREE.MeshStandardMaterial({ map: grass, roughness: 1 })); ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
 
-const col = [];                                    // круговые коллайдеры
+const col = [];
 const CV = { x: 14, z: -6 }, SH = { x: -14, z: -6 };
 const ring = (x, z, c) => { const m = new THREE.Mesh(new THREE.RingGeometry(1.6, 2.1, 32), new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.55, side: THREE.DoubleSide })); m.rotation.x = -Math.PI / 2; m.position.set(x, 0.05, z); scene.add(m); };
 
@@ -45,6 +45,7 @@ add(new THREE.SphereGeometry(0.22, 12, 8), 0xff8a1f, [5.4, 2.6, 0], cvG, false, 
 sign('СДАТЬ БРЁВНА', 3, 0.75, cvG, [-4.2, 2.4, 0]);
 for (const x of [-3, -1, 1, 3, 5.4]) col.push({ x: CV.x + x, z: CV.z, r: x > 5 ? 1.6 : 1.1, act: true });
 ring(CV.x - 4.8, CV.z, 0x27e0ff);
+
 // магазин
 const shG = new THREE.Group(); shG.position.set(SH.x, 0, SH.z); scene.add(shG);
 add(new THREE.BoxGeometry(5, 3, 4), 0xb5834a, [0, 1.5, 0], shG); const roof = add(new THREE.ConeGeometry(4, 1.8, 4), 0xa03a2a, [0, 3.9, 0], shG); roof.rotation.y = Math.PI / 4;
@@ -72,17 +73,18 @@ for (let i = 0; i < 14; i++) { const a = rnd() * 6.283, d = 8 + rnd() * 48, x = 
   const r = add(new THREE.IcosahedronGeometry(s, 0), 0x8b8f94, [x, s * 0.5, z], scene); r.rotation.set(rnd() * 3, rnd() * 3, 0); col.push({ x, z, r: s * 0.9, act: true }); }
 for (let i = 0; i < 26; i++) { const a = rnd() * 6.283, d = 5 + rnd() * 52; add(new THREE.SphereGeometry(0.45 + rnd() * 0.3, 8, 6), 0x2e8a3c, [Math.cos(a) * d, 0.3, Math.sin(a) * d], scene); }
 
-// ---------- персонаж (GLB с rig и анимациями) ----------
+// ---------- персонаж ----------
 const P = new THREE.Group(); scene.add(P); P.position.set(0, 0, 4);
 const characterVisual = new THREE.Group(); P.add(characterVisual);
 let characterMixer = null, walkAction = null, runAction = null, idleAction = null;
 let characterReady = false;
 const axeG = new THREE.Group(); axeG.position.set(0.48, 1.05, 0.18); P.add(axeG);
 const bagG = new THREE.Group(); bagG.position.set(0, 1.15, -0.34); P.add(bagG);
-const logsG = new THREE.Group(); P.add(logsG);
-const LG = new THREE.CylinderGeometry(0.13, 0.13, 0.7, 8).rotateZ(Math.PI / 2), LM = M(0x8a5a2b);
-const carryLogs = Array.from({ length: 24 }, () => { const m = new THREE.Mesh(LG, LM); m.castShadow = true; m.visible = false; logsG.add(m); return m; });
-carryLogs.forEach((m, i) => m.position.set(((i % 4) - 1.5) * 0.28, 0.55 + Math.floor(i / 4) * 0.22, -0.85));
+
+// Геометрия используется для брёвен на земле и на конвейере.
+// Брёвна за спиной персонажа удалены.
+const LG = new THREE.CylinderGeometry(0.13, 0.13, 0.7, 8).rotateZ(Math.PI / 2);
+const LM = M(0x8a5a2b);
 
 function loadPlayerModel() {
   const loader = new GLTFLoader();
@@ -92,7 +94,6 @@ function loadPlayerModel() {
     const box = new THREE.Box3().setFromObject(model);
     const size = new THREE.Vector3(); box.getSize(size);
     const height = Math.max(size.y, 0.001);
-    // Нормализуем высоту модели примерно до 2.1 игровых единиц и ставим ноги на землю.
     const scale = 2.1 / height;
     model.scale.setScalar(scale);
     model.position.set(-((box.min.x + box.max.x) / 2) * scale, -box.min.y * scale, -((box.min.z + box.max.z) / 2) * scale);
@@ -134,8 +135,8 @@ function equip() {
   add(new THREE.BoxGeometry(0.5 * s, 0.6 * s, 0.28 * s), b.color, [0, 0, 0], bagG);
   for (let j = 0; j < Math.min(i, 3); j++) add(new THREE.BoxGeometry(0.12 * s, 0.2 * s, 0.1 * s), b.color, [(j - 1) * 0.17 * s, -0.12 * s, -0.17 * s], bagG);
   if (i >= 4) add(new THREE.BoxGeometry(0.52 * s, 0.05, 0.3 * s), 0xffd23f, [0, 0.3 * s, 0], bagG);
-  logsG.position.set(0, 0, -0.02 - 0.14 * s);
 }
+
 // ---------- брёвна, частицы, конвейер ----------
 const logs = [], beltLogs = [], chips = [];
 const chipG = new THREE.BoxGeometry(0.1, 0.1, 0.1), chipM = M(0xc89a5a);
@@ -244,7 +245,6 @@ function update(dt) {
   for (const c of col) { if (!c.act) continue; const dx = P.position.x - c.x, dz = P.position.z - c.z, d = Math.hypot(dx, dz), m = c.r + 0.45; if (d < m && d > 1e-4) { P.position.x = c.x + dx / d * m; P.position.z = c.z + dz / d * m; } }
   const wr = Math.hypot(P.position.x, P.position.z); if (wr > 58) { P.position.x *= 58 / wr; P.position.z *= 58 / wr; }
   let face = moving ? Math.atan2(mx, mz) : null;
-  // режимы
   const tr = mode === 'chop' ? nearTree() : null;
   if (mode === 'chop' && !tr) mode = null;
   if (mode === 'deliver' && (carried <= 0 || !nearCv())) mode = null;
@@ -254,7 +254,6 @@ function update(dt) {
     if (ct >= 1) { ct = 0; hitDone = false; }
   } else if (mode === 'deliver') { face = Math.atan2(CV.x - 4.8 - P.position.x, CV.z - P.position.z); dt2 += dt; tAct += dt; if (dt2 >= 0.28) { dt2 = 0; deposit(); } }
   if (face !== null) { let d = face - P.rotation.y; d = Math.atan2(Math.sin(d), Math.cos(d)); P.rotation.y += d * Math.min(1, dt * 12); }
-  // подбор брёвен
   pickT -= dt; pk = Math.max(0, pk - dt);
   if (pickT <= 0 && carried < bagD().cap) for (let i = logs.length - 1; i >= 0; i--) { const l = logs[i]; if (l.vy === 0 && Math.hypot(l.m.position.x - P.position.x, l.m.position.z - P.position.z) < CFG.pickRadius) {
     scene.remove(l.m); logs.splice(i, 1); carried++; S.stats.picked++; addXp(CFG.xp.pick); pickT = 0.12; pk = 0.35; commit(); break; } }
@@ -264,12 +263,9 @@ function update(dt) {
   beltTex.offset.x -= dt * 0.55;
   for (let i = chips.length - 1; i >= 0; i--) { const c = chips[i]; c.life -= dt; c.v.y -= 9 * dt; c.m.position.addScaledVector(c.v, dt); if (c.life <= 0) { scene.remove(c.m); chips.splice(i, 1); } }
   for (const t of trees) treeUpdate(t, dt);
-  // Анимации rigged-персонажа из GLB (walk/run). Старые примитивные части тела удалены.
   if (characterMixer) characterMixer.update(dt);
   setCharacterMotion(spd > 0, run);
   P.position.y = 0;
-  carryLogs.forEach((m, i) => { m.visible = i < Math.min(carried, 24); });
-  // камера
   const tx = P.position.x, ty = P.position.y + 1.6, tz = P.position.z;
   cam.position.set(tx + Math.sin(yaw) * Math.cos(pitch) * dist, ty + Math.sin(pitch) * dist, tz + Math.cos(yaw) * Math.cos(pitch) * dist); cam.lookAt(tx, ty, tz);
   sun.position.set(tx + 25, 40, tz + 15); sun.target.position.set(tx, 0, tz); sun.target.updateMatrixWorld();
