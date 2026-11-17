@@ -1,4 +1,8 @@
 
+
+    
+    characterVisual.add(model);
+
 import * as THREE from 'three';
 import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
 import { CFG } from './config.js';
@@ -10,6 +14,11 @@ const rnd = (() => { let s = 7; return () => (s = (s * 16807) % 2147483647) / 21
 const lvl = () => 1 + Math.floor(Math.sqrt(S.xp / 40));
 const axeD = () => CFG.axes.find((a) => a.id === S.axe), bagD = () => CFG.bags.find((b) => b.id === S.bag);
 let carried = 0, mode = null, panel = null, tab = 'axes', dirty = false, yaw = 0.6, pitch = 0.5, dist = 9;
+
+// Камера
+let cameraDist = 9;
+let firstPerson = false;
+
 const commit = () => { dirty = true; hud(); };
 const toast = (m) => { const t = $('toast'); t.textContent = m; t.classList.add('show'); clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove('show'), 2200); };
 
@@ -47,8 +56,7 @@ sign('СДАТЬ БРЁВНА', 3, 0.75, cvG, [-4.2, 2.4, 0]);
 for (const x of [-3, -1, 1, 3, 5.4]) col.push({ x: CV.x + x, z: CV.z, r: x > 5 ? 1.6 : 1.1, act: true });
 ring(CV.x - 4.8, CV.z, 0x27e0ff);
 
-
-// магазин — новая 3D-модель
+// магазин
 const shG = new THREE.Group();
 shG.position.set(SH.x, 0, SH.z);
 scene.add(shG);
@@ -108,7 +116,6 @@ for (const x of [-2.2, 0, 2.2]) {
 
 ring(SH.x, SH.z + 4, 0xffd23f);
 
-
 // деревья
 const trees = [];
 function tree(x, z, big) {
@@ -137,7 +144,6 @@ const characterVisual = new THREE.Group(); P.add(characterVisual);
 const PLAYER_MAX_HP = 100;
 let playerHp = PLAYER_MAX_HP;
 
-// Создаём Canvas-текстуру для полоски здоровья.
 const healthCanvas = document.createElement('canvas');
 healthCanvas.width = 512;
 healthCanvas.height = 128;
@@ -145,7 +151,6 @@ const healthContext = healthCanvas.getContext('2d');
 const healthTexture = new THREE.CanvasTexture(healthCanvas);
 healthTexture.colorSpace = THREE.SRGBColorSpace;
 
-// Полоска здоровья всегда повёрнута к камере.
 const healthMaterial = new THREE.SpriteMaterial({
   map: healthTexture,
   transparent: true,
@@ -159,7 +164,6 @@ healthBar.scale.set(1.55, 0.32, 1);
 healthBar.renderOrder = 10;
 P.add(healthBar);
 
-// Обновление внешнего вида полоски.
 function updateHealthBar() {
   const ctx = healthContext;
   const w = healthCanvas.width;
@@ -167,23 +171,18 @@ function updateHealthBar() {
   const percent = Math.max(0, Math.min(1, playerHp / PLAYER_MAX_HP));
 
   ctx.clearRect(0, 0, w, h);
-
-  // Тёмный фон.
   ctx.fillStyle = 'rgba(15, 15, 20, 0.9)';
   ctx.fillRect(4, 4, w - 8, h - 8);
 
-  // Красная полоса здоровья.
   if (percent > 0) {
     ctx.fillStyle = '#ed2525';
     ctx.fillRect(12, 12, (w - 24) * percent, h - 24);
   }
 
-  // Обводка.
   ctx.strokeStyle = '#ffffff';
   ctx.lineWidth = 7;
   ctx.strokeRect(4, 4, w - 8, h - 8);
 
-  // Цифры здоровья.
   ctx.font = 'bold 54px Arial, sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -196,7 +195,6 @@ function updateHealthBar() {
   healthTexture.needsUpdate = true;
 }
 
-// Установка здоровья.
 function setPlayerHealth(value) {
   playerHp = Math.max(0, Math.min(PLAYER_MAX_HP, Math.round(value)));
   updateHealthBar();
@@ -206,23 +204,19 @@ function setPlayerHealth(value) {
   }
 }
 
-// Получение урона.
 function damagePlayer(amount = 10) {
   if (playerHp <= 0) return;
   setPlayerHealth(playerHp - Math.max(0, amount));
 }
 
-// Восстановление здоровья.
 function healPlayer(amount = 10) {
   setPlayerHealth(playerHp + Math.max(0, amount));
 }
 
-// Делаем функции доступными для будущих игровых механик.
 window.damagePlayer = damagePlayer;
 window.healPlayer = healPlayer;
 window.setPlayerHealth = setPlayerHealth;
 
-// Первоначальное отображение: 100/100.
 updateHealthBar();
 
 let characterMixer = null, walkAction = null, runAction = null, idleAction = null;
@@ -230,8 +224,26 @@ let characterReady = false;
 const axeG = new THREE.Group(); axeG.position.set(0.48, 1.05, 0.18); P.add(axeG);
 const bagG = new THREE.Group(); bagG.position.set(0, 1.15, -0.34); P.add(bagG);
 
-// Геометрия используется для брёвен на земле и на конвейере.
-// Брёвна за спиной персонажа удалены.
+// Топор для вида от первого лица.
+const fpAxeG = new THREE.Group();
+cam.add(fpAxeG);
+fpAxeG.position.set(0.42, -0.38, -0.85);
+fpAxeG.rotation.set(-0.15, 0.2, 0.2);
+fpAxeG.scale.setScalar(0.75);
+fpAxeG.visible = false;
+
+function updateFirstPersonAxe() {
+  while (fpAxeG.children.length) {
+    fpAxeG.remove(fpAxeG.children[0]);
+  }
+
+  for (const child of axeG.children) {
+    const clone = child.clone(true);
+    fpAxeG.add(clone);
+  }
+}
+
+// Брёвна
 const LG = new THREE.CylinderGeometry(0.13, 0.13, 0.7, 8).rotateZ(Math.PI / 2);
 const LM = M(0x8a5a2b);
 
@@ -264,6 +276,7 @@ function loadPlayerModel() {
     toast('Не удалось загрузить персонажа. Проверьте файл модели.');
   });
 }
+
 function setCharacterMotion(moving, running) {
   if (!characterMixer) return;
   const next = moving ? (running && runAction ? runAction : walkAction) : null;
@@ -273,6 +286,7 @@ function setCharacterMotion(moving, running) {
     else { a.setEffectiveWeight(0); a.paused = true; }
   }
 }
+
 loadPlayerModel();
 
 function equip() {
@@ -284,11 +298,14 @@ function equip() {
   add(new THREE.BoxGeometry(0.5 * s, 0.6 * s, 0.28 * s), b.color, [0, 0, 0], bagG);
   for (let j = 0; j < Math.min(i, 3); j++) add(new THREE.BoxGeometry(0.12 * s, 0.2 * s, 0.1 * s), b.color, [(j - 1) * 0.17 * s, -0.12 * s, -0.17 * s], bagG);
   if (i >= 4) add(new THREE.BoxGeometry(0.52 * s, 0.05, 0.3 * s), 0xffd23f, [0, 0.3 * s, 0], bagG);
+
+  updateFirstPersonAxe();
 }
 
 // ---------- брёвна, частицы, конвейер ----------
 const logs = [], beltLogs = [], chips = [];
 const chipG = new THREE.BoxGeometry(0.1, 0.1, 0.1), chipM = M(0xc89a5a);
+
 function spawnLogs(t) {
   const n = 2 + Math.round(t.s * 1.5) + (t.big ? 2 : 0);
   for (let i = 0; i < n; i++) { const m = new THREE.Mesh(LG, LM); m.castShadow = true; m.rotation.y = Math.atan2(t.dz, t.dx) + (rnd() - 0.5) * 0.8;
@@ -305,11 +322,108 @@ function deposit() {
 const keys = {}, joy = { x: 0, y: 0, on: false };
 addEventListener('keydown', (e) => { keys[e.code] = true; if (e.code === 'KeyE' || e.code === 'Space') { e.preventDefault(); act(); } if (e.code === 'Escape') closePanel(); });
 addEventListener('keyup', (e) => { keys[e.code] = false; });
+
+// Управление камерой: один палец — поворот, два пальца — приближение.
 let drag = null;
-$('c').addEventListener('pointerdown', (e) => { drag = { id: e.pointerId, x: e.clientX, y: e.clientY }; $('c').setPointerCapture(e.pointerId); });
-$('c').addEventListener('pointermove', (e) => { if (!drag || drag.id !== e.pointerId) return; yaw -= (e.clientX - drag.x) * 0.006; pitch = Math.max(0.15, Math.min(1.25, pitch + (e.clientY - drag.y) * 0.004)); drag.x = e.clientX; drag.y = e.clientY; });
-$('c').addEventListener('pointerup', () => { drag = null; }); $('c').addEventListener('pointercancel', () => { drag = null; });
-$('c').addEventListener('wheel', (e) => { dist = Math.max(5, Math.min(16, dist + e.deltaY * 0.01)); }, { passive: true });
+const pointers = new Map();
+let pinchDistance = null;
+
+const getPinchDistance = () => {
+  const pts = [...pointers.values()];
+  if (pts.length < 2) return null;
+
+  return Math.hypot(
+    pts[0].x - pts[1].x,
+    pts[0].y - pts[1].y
+  );
+};
+
+$('c').addEventListener('pointerdown', (e) => {
+  pointers.set(e.pointerId, {
+    x: e.clientX,
+    y: e.clientY
+  });
+
+  $('c').setPointerCapture(e.pointerId);
+
+  if (pointers.size >= 2) {
+    drag = null;
+    pinchDistance = getPinchDistance();
+  } else {
+    drag = {
+      id: e.pointerId,
+      x: e.clientX,
+      y: e.clientY
+    };
+  }
+});
+
+$('c').addEventListener('pointermove', (e) => {
+  if (!pointers.has(e.pointerId)) return;
+
+  pointers.set(e.pointerId, {
+    x: e.clientX,
+    y: e.clientY
+  });
+
+  if (pointers.size >= 2) {
+    const nextDistance = getPinchDistance();
+
+    if (pinchDistance !== null && nextDistance !== null) {
+      const delta = nextDistance - pinchDistance;
+
+      // Разведение пальцев приближает камеру.
+      dist = THREE.MathUtils.clamp(
+        dist - delta * 0.025,
+        1.2,
+        16
+      );
+    }
+
+    pinchDistance = nextDistance;
+    drag = null;
+    return;
+  }
+
+  if (!drag || drag.id !== e.pointerId) return;
+
+  yaw -= (e.clientX - drag.x) * 0.006;
+  pitch = Math.max(0.15, Math.min(1.25, pitch + (e.clientY - drag.y) * 0.004));
+
+  drag.x = e.clientX;
+  drag.y = e.clientY;
+});
+
+const endCameraPointer = (e) => {
+  pointers.delete(e.pointerId);
+
+  if (pointers.size < 2) {
+    pinchDistance = null;
+  }
+
+  drag = null;
+
+  if (pointers.size === 1) {
+    const [id, p] = [...pointers.entries()][0];
+    drag = {
+      id,
+      x: p.x,
+      y: p.y
+    };
+  }
+};
+
+$('c').addEventListener('pointerup', endCameraPointer);
+$('c').addEventListener('pointercancel', endCameraPointer);
+
+$('c').addEventListener('wheel', (e) => {
+  dist = THREE.MathUtils.clamp(
+    dist + e.deltaY * 0.01,
+    1.2,
+    16
+  );
+}, { passive: true });
+
 const J = $('joy'); let jid = null;
 const jmove = (e) => { const r = J.getBoundingClientRect(), dx = e.clientX - (r.left + 60), dy = e.clientY - (r.top + 60), m = Math.min(1, Math.hypot(dx, dy) / 50), a = Math.atan2(dy, dx);
   joy.x = Math.cos(a) * m; joy.y = -Math.sin(a) * m; joy.on = true; $('knob').style.transform = `translate(${Math.cos(a) * m * 40}px,${Math.sin(a) * m * 40}px)`; };
@@ -323,7 +437,14 @@ $('act').addEventListener('click', () => act());
 const dist2 = (x, z) => Math.hypot(P.position.x - x, P.position.z - z);
 const nearTree = () => { let b = null, bd = 1e9; for (const t of trees) if (t.state === 'alive') { const d = dist2(t.x, t.z) - t.c.r; if (d < CFG.hitRange && d < bd) { b = t; bd = d; } } return b; };
 const nearShop = () => dist2(SH.x, SH.z + 3) < 5.5, nearCv = () => dist2(CV.x - 4.8, CV.z) < 3.4;
-function context() { if (nearShop()) return 'shop'; if (nearCv() && carried > 0) return 'deliver'; if (nearTree()) return 'chop'; return null; }
+
+function context() {
+  if (nearShop()) return 'shop';
+  if (nearCv() && carried > 0) return 'deliver';
+  if (nearTree()) return 'chop';
+  return null;
+}
+
 function act() {
   if (panel) return; const c = context();
   if (c === 'shop') return openPanel('shop');
@@ -333,11 +454,13 @@ function act() {
     mode = c; ct = 0; hitDone = false; dt2 = 0;
   }
 }
+
 function hit(t) {
   t.hp--; t.pulse = 0.15; chipsAt(t); addXp(CFG.xp.chop);
   if (t.hp <= 0) { S.stats.trees++; const dx = t.x - P.position.x, dz = t.z - P.position.z, l = Math.hypot(dx, dz) || 1; t.dx = dx / l; t.dz = dz / l; t.ax.set(t.dz, 0, -t.dx); t.state = 'fall'; t.t = 0; t.c.act = false; mode = null; }
   commit();
 }
+
 function treeUpdate(t, dt) {
   if (t.state === 'alive') { t.pulse = Math.max(0, t.pulse - dt); t.g.scale.setScalar(1 + t.pulse * 0.4); }
   else if (t.state === 'fall') { t.t += dt; const k = Math.min(t.t / 1.3, 1); t.g.quaternion.setFromAxisAngle(t.ax, k * k * Math.PI / 2 * 0.98); if (k >= 1) { t.state = 'lie'; t.t = 0; spawnLogs(t); } }
@@ -351,11 +474,14 @@ function hud() {
   const L = lvl(), a = 40 * (L - 1) ** 2, b = 40 * L * L;
   $('coins').textContent = S.coins; $('bag').textContent = `${carried}/${bagD().cap}`; $('axe').textContent = axeD().name; $('lvl').textContent = L; $('xp').style.width = ((S.xp - a) / (b - a) * 100) + '%';
 }
+
 function actLabel() {
   const c = context(), B = $('act'); B.disabled = !c || !!panel;
   B.textContent = c === 'shop' ? 'Магазин' : c === 'deliver' ? (mode ? 'Стоп' : 'Сдать') : c === 'chop' ? (mode ? 'Стоп' : 'Рубить') : '—';
 }
+
 const opened = (kind, id) => S[kind].includes(id), cur = (kind, id) => (kind === 'axes' ? S.axe : S.bag) === id;
+
 function panelHtml() {
   if (panel === 'quests') return '<h2>📋 Задания</h2>' + CFG.quests.map((q) => { const v = Math.min(S.stats[q.stat] || 0, q.goal), done = S.claimed.includes(q.id);
     return `<div class="row"><div class="g">${q.text}<small>${v}/${q.goal} · награда ${q.reward} 🪙</small></div><button data-a="claim:${q.id}" ${done || v < q.goal ? 'disabled' : ''}>${done ? 'Получено' : 'Забрать'}</button></div>`; }).join('') + '<button class="gh" data-a="close">Закрыть</button>';
@@ -366,8 +492,10 @@ function panelHtml() {
   const tabs = `<div class="tabs"><button class="${tab === 'axes' ? 'on' : 'gh'}" data-a="tab:axes">🪓 Топоры</button><button class="${tab === 'bags' ? 'on' : 'gh'}" data-a="tab:bags">🎒 Рюкзаки</button></div>`;
   return `<h2>${panel === 'shop' ? '🛒 Магазин' : '🎒 Инвентарь'} · 🪙 ${S.coins}</h2>${tabs}${list(tab)}<button class="gh" data-a="close">Закрыть</button>`;
 }
+
 function openPanel(p) { panel = p; mode = null; $('box').innerHTML = panelHtml(); $('panel').classList.add('show'); }
 function closePanel() { panel = null; $('panel').classList.remove('show'); }
+
 $('box').addEventListener('click', (e) => {
   const a = e.target.closest('[data-a]')?.dataset.a?.split(':'); if (!a) return;
   if (a[0] === 'close') return closePanel();
@@ -378,57 +506,210 @@ $('box').addEventListener('click', (e) => {
   $('box').innerHTML = panelHtml();
 });
 
-// Кнопка магазина скрыта: магазин доступен только рядом с домиком.
+// Магазин доступен только рядом с домиком.
 if ($('bShop')) {
   $('bShop').style.display = 'none';
   $('bShop').onclick = null;
 }
 
-// Инвентарь и задания остаются доступными.
 $('bInv').onclick = () => openPanel('inv');
 $('bQ').onclick = () => openPanel('quests');
 
 setInterval(() => { if (dirty) { save(S); dirty = false; } }, 1000);
-addEventListener('beforeunload', () => save(S)); document.addEventListener('visibilitychange', () => { if (document.hidden) save(S); });
-function resize() { R.setSize(innerWidth, innerHeight); cam.aspect = innerWidth / innerHeight; cam.updateProjectionMatrix(); }
-addEventListener('resize', resize); resize();
+addEventListener('beforeunload', () => save(S));
+document.addEventListener('visibilitychange', () => { if (document.hidden) save(S); });
+
+function resize() {
+  R.setSize(innerWidth, innerHeight);
+  cam.aspect = innerWidth / innerHeight;
+  cam.updateProjectionMatrix();
+}
+addEventListener('resize', resize);
+resize();
 
 // ---------- игровой цикл ----------
 let last = performance.now(), phase = 0, ct = 0, hitDone = false, dt2 = 0, pk = 0, pickT = 0, spd = 0, tAct = 0;
+
 function update(dt) {
-  const ix = (keys.KeyD || keys.ArrowRight ? 1 : 0) - (keys.KeyA || keys.ArrowLeft ? 1 : 0) + joy.x, iy = (keys.KeyW || keys.ArrowUp ? 1 : 0) - (keys.KeyS || keys.ArrowDown ? 1 : 0) + joy.y;
-  const mag = Math.min(1, Math.hypot(ix, iy)), moving = mag > 0.08 && !panel; let mx = 0, mz = 0;
-  if (moving) { mx = -Math.sin(yaw) * iy + Math.cos(yaw) * ix; mz = -Math.cos(yaw) * iy - Math.sin(yaw) * ix; const l = Math.hypot(mx, mz) || 1; mx /= l; mz /= l; if (mode) mode = null; }
-  const run = moving && (keys.ShiftLeft || keys.ShiftRight || (joy.on && mag > 0.85)); spd = moving ? (run ? 7 : 4) * (joy.on ? Math.max(0.55, mag) : 1) : 0;
-  P.position.x += mx * spd * dt; P.position.z += mz * spd * dt;
-  for (const c of col) { if (!c.act) continue; const dx = P.position.x - c.x, dz = P.position.z - c.z, d = Math.hypot(dx, dz), m = c.r + 0.45; if (d < m && d > 1e-4) { P.position.x = c.x + dx / d * m; P.position.z = c.z + dz / d * m; } }
-  const wr = Math.hypot(P.position.x, P.position.z); if (wr > 58) { P.position.x *= 58 / wr; P.position.z *= 58 / wr; }
+  const ix = (keys.KeyD || keys.ArrowRight ? 1 : 0) - (keys.KeyA || keys.ArrowLeft ? 1 : 0) + joy.x;
+  const iy = (keys.KeyW || keys.ArrowUp ? 1 : 0) - (keys.KeyS || keys.ArrowDown ? 1 : 0) + joy.y;
+  const mag = Math.min(1, Math.hypot(ix, iy)), moving = mag > 0.08 && !panel;
+  let mx = 0, mz = 0;
+
+  if (moving) {
+    mx = -Math.sin(yaw) * iy + Math.cos(yaw) * ix;
+    mz = -Math.cos(yaw) * iy - Math.sin(yaw) * ix;
+    const l = Math.hypot(mx, mz) || 1;
+    mx /= l;
+    mz /= l;
+    if (mode) mode = null;
+  }
+
+  const run = moving && (keys.ShiftLeft || keys.ShiftRight || (joy.on && mag > 0.85));
+  spd = moving ? (run ? 7 : 4) * (joy.on ? Math.max(0.55, mag) : 1) : 0;
+
+  P.position.x += mx * spd * dt;
+  P.position.z += mz * spd * dt;
+
+  for (const c of col) {
+    if (!c.act) continue;
+    const dx = P.position.x - c.x, dz = P.position.z - c.z, d = Math.hypot(dx, dz), m = c.r + 0.45;
+    if (d < m && d > 1e-4) {
+      P.position.x = c.x + dx / d * m;
+      P.position.z = c.z + dz / d * m;
+    }
+  }
+
+  const wr = Math.hypot(P.position.x, P.position.z);
+  if (wr > 58) { P.position.x *= 58 / wr; P.position.z *= 58 / wr; }
+
   let face = moving ? Math.atan2(mx, mz) : null;
   const tr = mode === 'chop' ? nearTree() : null;
+
   if (mode === 'chop' && !tr) mode = null;
   if (mode === 'deliver' && (carried <= 0 || !nearCv())) mode = null;
+
   if (mode === 'chop') {
-    face = Math.atan2(tr.x - P.position.x, tr.z - P.position.z); ct += dt * axeD().speed / 0.9;
+    face = Math.atan2(tr.x - P.position.x, tr.z - P.position.z);
+    ct += dt * axeD().speed / 0.9;
     if (ct >= 0.6 && !hitDone) { hitDone = true; hit(tr); }
     if (ct >= 1) { ct = 0; hitDone = false; }
-  } else if (mode === 'deliver') { face = Math.atan2(CV.x - 4.8 - P.position.x, CV.z - P.position.z); dt2 += dt; tAct += dt; if (dt2 >= 0.28) { dt2 = 0; deposit(); } }
-  if (face !== null) { let d = face - P.rotation.y; d = Math.atan2(Math.sin(d), Math.cos(d)); P.rotation.y += d * Math.min(1, dt * 12); }
-  pickT -= dt; pk = Math.max(0, pk - dt);
-  if (pickT <= 0 && carried < bagD().cap) for (let i = logs.length - 1; i >= 0; i--) { const l = logs[i]; if (l.vy === 0 && Math.hypot(l.m.position.x - P.position.x, l.m.position.z - P.position.z) < CFG.pickRadius) {
-    scene.remove(l.m); logs.splice(i, 1); carried++; S.stats.picked++; addXp(CFG.xp.pick); pickT = 0.12; pk = 0.35; commit(); break; } }
-  for (const l of logs) { l.vy -= 12 * dt; l.m.position.y += l.vy * dt; if (l.m.position.y < 0.13) { l.m.position.y = 0.13; l.vy = Math.abs(l.vy) > 1.5 ? -l.vy * 0.35 : 0; } }
-  for (let i = beltLogs.length - 1; i >= 0; i--) { const b = beltLogs[i]; b.lx += 2.2 * dt; b.m.position.x = CV.x + b.lx;
-    if (b.lx >= 4.2) { scene.remove(b.m); beltLogs.splice(i, 1); S.coins += CFG.logValue; S.stats.delivered++; addXp(CFG.xp.deliver); pop('+' + CFG.logValue + ' 🪙', CV.x + 4.4, 2.2, CV.z); commit(); } }
+  } else if (mode === 'deliver') {
+    face = Math.atan2(CV.x - 4.8 - P.position.x, CV.z - P.position.z);
+    dt2 += dt;
+    tAct += dt;
+    if (dt2 >= 0.28) { dt2 = 0; deposit(); }
+  }
+
+  if (face !== null) {
+    let d = face - P.rotation.y;
+    d = Math.atan2(Math.sin(d), Math.cos(d));
+    P.rotation.y += d * Math.min(1, dt * 12);
+  }
+
+  pickT -= dt;
+  pk = Math.max(0, pk - dt);
+
+  if (pickT <= 0 && carried < bagD().cap) {
+    for (let i = logs.length - 1; i >= 0; i--) {
+      const l = logs[i];
+      if (l.vy === 0 && Math.hypot(l.m.position.x - P.position.x, l.m.position.z - P.position.z) < CFG.pickRadius) {
+        scene.remove(l.m);
+        logs.splice(i, 1);
+        carried++;
+        S.stats.picked++;
+        addXp(CFG.xp.pick);
+        pickT = 0.12;
+        pk = 0.35;
+        commit();
+        break;
+      }
+    }
+  }
+
+  for (const l of logs) {
+    l.vy -= 12 * dt;
+    l.m.position.y += l.vy * dt;
+    if (l.m.position.y < 0.13) {
+      l.m.position.y = 0.13;
+      l.vy = Math.abs(l.vy) > 1.5 ? -l.vy * 0.35 : 0;
+    }
+  }
+
+  for (let i = beltLogs.length - 1; i >= 0; i--) {
+    const b = beltLogs[i];
+    b.lx += 2.2 * dt;
+    b.m.position.x = CV.x + b.lx;
+
+    if (b.lx >= 4.2) {
+      scene.remove(b.m);
+      beltLogs.splice(i, 1);
+      S.coins += CFG.logValue;
+      S.stats.delivered++;
+      addXp(CFG.xp.deliver);
+      pop('+' + CFG.logValue + ' 🪙', CV.x + 4.4, 2.2, CV.z);
+      commit();
+    }
+  }
+
   beltTex.offset.x -= dt * 0.55;
-  for (let i = chips.length - 1; i >= 0; i--) { const c = chips[i]; c.life -= dt; c.v.y -= 9 * dt; c.m.position.addScaledVector(c.v, dt); if (c.life <= 0) { scene.remove(c.m); chips.splice(i, 1); } }
+
+  for (let i = chips.length - 1; i >= 0; i--) {
+    const c = chips[i];
+    c.life -= dt;
+    c.v.y -= 9 * dt;
+    c.m.position.addScaledVector(c.v, dt);
+    if (c.life <= 0) {
+      scene.remove(c.m);
+      chips.splice(i, 1);
+    }
+  }
+
   for (const t of trees) treeUpdate(t, dt);
+
   if (characterMixer) characterMixer.update(dt);
   setCharacterMotion(spd > 0, run);
   P.position.y = 0;
-  const tx = P.position.x, ty = P.position.y + 1.6, tz = P.position.z;
-  cam.position.set(tx + Math.sin(yaw) * Math.cos(pitch) * dist, ty + Math.sin(pitch) * dist, tz + Math.cos(yaw) * Math.cos(pitch) * dist); cam.lookAt(tx, ty, tz);
-  sun.position.set(tx + 25, 40, tz + 15); sun.target.position.set(tx, 0, tz); sun.target.updateMatrixWorld();
+
+  // ---------- камера: плавное приближение ----------
+  const tx = P.position.x;
+  const ty = P.position.y + 1.6;
+  const tz = P.position.z;
+
+  cameraDist += (dist - cameraDist) * Math.min(1, dt * 8);
+
+  // Небольшой запас между режимами предотвращает мигание.
+  if (!firstPerson && cameraDist <= 1.65) {
+    firstPerson = true;
+    characterVisual.visible = false;
+    axeG.visible = false;
+    bagG.visible = false;
+    healthBar.visible = false;
+    fpAxeG.visible = true;
+  } else if (firstPerson && cameraDist >= 2.0) {
+    firstPerson = false;
+    characterVisual.visible = true;
+    axeG.visible = true;
+    bagG.visible = true;
+    healthBar.visible = true;
+    fpAxeG.visible = false;
+  }
+
+  if (firstPerson) {
+    // Камера на уровне глаз персонажа.
+    cam.position.set(tx, ty, tz);
+
+    cam.lookAt(
+      tx - Math.sin(yaw) * 10 * Math.cos(pitch),
+      ty - Math.sin(pitch) * 10,
+      tz - Math.cos(yaw) * 10 * Math.cos(pitch)
+    );
+  } else {
+    // Камера третьего лица.
+    cam.position.set(
+      tx + Math.sin(yaw) * Math.cos(pitch) * cameraDist,
+      ty + Math.sin(pitch) * cameraDist,
+      tz + Math.cos(yaw) * Math.cos(pitch) * cameraDist
+    );
+
+    cam.lookAt(tx, ty, tz);
+  }
+
+  sun.position.set(tx + 25, 40, tz + 15);
+  sun.target.position.set(tx, 0, tz);
+  sun.target.updateMatrixWorld();
+
   actLabel();
 }
-function loop(now) { requestAnimationFrame(loop); const dt = Math.min((now - last) / 1000, 0.05); last = now; update(dt); R.render(scene, cam); }
-equip(); hud(); requestAnimationFrame(loop);
+
+function loop(now) {
+  requestAnimationFrame(loop);
+  const dt = Math.min((now - last) / 1000, 0.05);
+  last = now;
+  update(dt);
+  R.render(scene, cam);
+}
+
+equip();
+hud();
+requestAnimationFrame(loop);
