@@ -1,5 +1,3 @@
-
-
 import * as THREE from 'three';
 import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
 import { CFG } from './config.js';
@@ -10,7 +8,7 @@ const S = load(), $ = (i) => document.getElementById(i);
 const rnd = (() => { let s = 7; return () => (s = (s * 16807) % 2147483647) / 2147483647; })();
 const lvl = () => 1 + Math.floor(Math.sqrt(S.xp / 40));
 const axeD = () => CFG.axes.find((a) => a.id === S.axe), bagD = () => CFG.bags.find((b) => b.id === S.bag);
-let carried = 0, mode = null, panel = null, tab = 'axes', dirty = false, yaw = 0.6, pitch = 0.5, dist = 9;
+let carried = 0, mode = null, panel = null, tab = 'axes', dirty = false, yaw = 0.6, pitch = 0.5, dist = 9, attackAnim = 0;
 
 // Камера
 let cameraDist = 9;
@@ -444,12 +442,36 @@ function context() {
 }
 
 function act() {
-  if (panel) return; const c = context();
+  if (panel) return;
+  const c = context();
+
   if (c === 'shop') return openPanel('shop');
-  if (c === 'deliver' || c === 'chop') {
-    if (mode === c) { mode = null; return; }
-    if (c === 'chop') { const t = nearTree(); if (t.big && lvl() < CFG.bigLvl) return toast(`Древнее дерево: нужен уровень ${CFG.bigLvl}`); if (carried >= bagD().cap) toast('Рюкзак полон — брёвна не подобрать'); }
-    mode = c; ct = 0; hitDone = false; dt2 = 0;
+
+  // Рубка теперь ручная: одно нажатие — один удар.
+  if (c === 'chop') {
+    const t = nearTree();
+    if (!t) return;
+    if (t.big && lvl() < CFG.bigLvl) {
+      return toast(`Древнее дерево: нужен уровень ${CFG.bigLvl}`);
+    }
+    if (carried >= bagD().cap) {
+      toast('Рюкзак полон — брёвна не подобрать');
+    }
+
+    P.rotation.y = Math.atan2(t.x - P.position.x, t.z - P.position.z);
+    attackAnim = 0.28;
+    hit(t);
+    return;
+  }
+
+  // Сдача брёвен на конвейер остаётся автоматической.
+  if (c === 'deliver') {
+    if (mode === 'deliver') {
+      mode = null;
+      return;
+    }
+    mode = 'deliver';
+    dt2 = 0;
   }
 }
 
@@ -475,7 +497,7 @@ function hud() {
 
 function actLabel() {
   const c = context(), B = $('act'); B.disabled = !c || !!panel;
-  B.textContent = c === 'shop' ? 'Магазин' : c === 'deliver' ? (mode ? 'Стоп' : 'Сдать') : c === 'chop' ? (mode ? 'Стоп' : 'Рубить') : '—';
+  B.textContent = c === 'shop' ? 'Магазин' : c === 'deliver' ? (mode === 'deliver' ? 'Стоп' : 'Сдать') : c === 'chop' ? '🪓 Ударить' : '—';
 }
 
 const opened = (kind, id) => S[kind].includes(id), cur = (kind, id) => (kind === 'axes' ? S.axe : S.bag) === id;
@@ -526,7 +548,7 @@ addEventListener('resize', resize);
 resize();
 
 // ---------- игровой цикл ----------
-let last = performance.now(), phase = 0, ct = 0, hitDone = false, dt2 = 0, pk = 0, pickT = 0, spd = 0, tAct = 0;
+let last = performance.now(), phase = 0, dt2 = 0, pk = 0, pickT = 0, spd = 0, tAct = 0;
 
 function update(dt) {
   const ix = (keys.KeyD || keys.ArrowRight ? 1 : 0) - (keys.KeyA || keys.ArrowLeft ? 1 : 0) + joy.x;
@@ -562,17 +584,10 @@ function update(dt) {
   if (wr > 58) { P.position.x *= 58 / wr; P.position.z *= 58 / wr; }
 
   let face = moving ? Math.atan2(mx, mz) : null;
-  const tr = mode === 'chop' ? nearTree() : null;
 
-  if (mode === 'chop' && !tr) mode = null;
   if (mode === 'deliver' && (carried <= 0 || !nearCv())) mode = null;
 
-  if (mode === 'chop') {
-    face = Math.atan2(tr.x - P.position.x, tr.z - P.position.z);
-    ct += dt * axeD().speed / 0.9;
-    if (ct >= 0.6 && !hitDone) { hitDone = true; hit(tr); }
-    if (ct >= 1) { ct = 0; hitDone = false; }
-  } else if (mode === 'deliver') {
+  if (mode === 'deliver') {
     face = Math.atan2(CV.x - 4.8 - P.position.x, CV.z - P.position.z);
     dt2 += dt;
     tAct += dt;
@@ -644,6 +659,12 @@ function update(dt) {
   }
 
   for (const t of trees) treeUpdate(t, dt);
+
+  attackAnim = Math.max(0, attackAnim - dt);
+  const swingProgress = attackAnim > 0 ? 1 - attackAnim / 0.28 : 0;
+  const swing = attackAnim > 0 ? Math.sin(swingProgress * Math.PI) : 0;
+  axeG.rotation.x = -swing * 1.1;
+  fpAxeG.rotation.x = -0.15 - swing * 1.1;
 
   if (characterMixer) characterMixer.update(dt);
   setCharacterMotion(spd > 0, run);
