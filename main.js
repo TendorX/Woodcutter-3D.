@@ -46,12 +46,67 @@ sign('СДАТЬ БРЁВНА', 3, 0.75, cvG, [-4.2, 2.4, 0]);
 for (const x of [-3, -1, 1, 3, 5.4]) col.push({ x: CV.x + x, z: CV.z, r: x > 5 ? 1.6 : 1.1, act: true });
 ring(CV.x - 4.8, CV.z, 0x27e0ff);
 
-// магазин
-const shG = new THREE.Group(); shG.position.set(SH.x, 0, SH.z); scene.add(shG);
-add(new THREE.BoxGeometry(5, 3, 4), 0xb5834a, [0, 1.5, 0], shG); const roof = add(new THREE.ConeGeometry(4, 1.8, 4), 0xa03a2a, [0, 3.9, 0], shG); roof.rotation.y = Math.PI / 4;
-add(new THREE.BoxGeometry(1, 1.8, 0.1), 0x5a3a1a, [0, 0.9, 2.02], shG); sign('МАГАЗИН', 3.6, 0.9, shG, [0, 3.3, 2.1]);
-for (const x of [-1.8, 0, 1.8]) col.push({ x: SH.x + x, z: SH.z, r: 2.3, act: true });
-ring(SH.x, SH.z + 3, 0xffd23f);
+
+ // магазин — новая 3D-модель
+const shG = new THREE.Group();
+shG.position.set(SH.x, 0, SH.z);
+scene.add(shG);
+
+const shopLoader = new GLTFLoader();
+
+shopLoader.load(
+  './assets/models/witch-cottage.glb',
+  (gltf) => {
+    const shopModel = gltf.scene;
+
+    shopModel.updateMatrixWorld(true);
+
+    const originalBox = new THREE.Box3().setFromObject(shopModel);
+    const originalSize = new THREE.Vector3();
+    originalBox.getSize(originalSize);
+
+    const targetWidth = 7;
+    const scale = targetWidth / Math.max(originalSize.x, originalSize.z);
+
+    shopModel.scale.setScalar(scale);
+    shopModel.updateMatrixWorld(true);
+
+    const box = new THREE.Box3().setFromObject(shopModel);
+    const center = new THREE.Vector3();
+    box.getCenter(center);
+
+    shopModel.position.x -= center.x;
+    shopModel.position.y -= box.min.y;
+    shopModel.position.z -= center.z;
+
+    shopModel.traverse((obj) => {
+      if (obj.isMesh) {
+        obj.castShadow = true;
+        obj.receiveShadow = true;
+      }
+    });
+
+    shG.add(shopModel);
+    toast('Новый магазин загружен!');
+  },
+  undefined,
+  (error) => {
+    console.error('Ошибка загрузки магазина:', error);
+    toast('Не удалось загрузить магазин');
+  }
+);
+
+for (const x of [-2.2, 0, 2.2]) {
+  col.push({
+    x: SH.x + x,
+    z: SH.z,
+    r: 2.1,
+    act: true
+  });
+}
+
+ring(SH.x, SH.z + 4, 0xffd23f);
+
 
 // деревья
 const trees = [];
