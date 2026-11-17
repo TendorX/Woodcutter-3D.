@@ -228,7 +228,17 @@ $('box').addEventListener('click', (e) => {
     if (it) { if (!opened(kind, it.id)) { if (lvl() < it.lvl) return toast(`Нужен уровень ${it.lvl}`); if (S.coins < it.price) return toast('Не хватает монет'); S.coins -= it.price; S[kind].push(it.id); toast('Куплено: ' + it.name); } S[key] = it.id; equip(); commit(); } }
   $('box').innerHTML = panelHtml();
 });
-$('bShop').onclick = () => openPanel('shop'); $('bInv').onclick = () => openPanel('inv'); $('bQ').onclick = () => openPanel('quests');
+
+// Кнопка магазина скрыта: магазин доступен только рядом с домиком.
+if ($('bShop')) {
+  $('bShop').style.display = 'none';
+  $('bShop').onclick = null;
+}
+
+// Инвентарь и задания остаются доступными.
+$('bInv').onclick = () => openPanel('inv');
+$('bQ').onclick = () => openPanel('quests');
+
 setInterval(() => { if (dirty) { save(S); dirty = false; } }, 1000);
 addEventListener('beforeunload', () => save(S)); document.addEventListener('visibilitychange', () => { if (document.hidden) save(S); });
 function resize() { R.setSize(innerWidth, innerHeight); cam.aspect = innerWidth / innerHeight; cam.updateProjectionMatrix(); }
