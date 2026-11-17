@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Лесоруб 3D</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}</script>
+<link rel="stylesheet" href="style.css"></head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud"><div class="pill">🪙 <b id="coins">0</b></div><div class="pill">🎒 <span id="bag">0/5</span> · 🪓 <span id="axe"></span></div>
+ <div class="pill">Уровень <b id="lvl">1</b><div class="bar"><i id="xp"></i></div></div></div>
+<div id="menu"><button id="bShop">🛒 Магазин</button><button id="bInv" class="gh">🎒 Инвентарь</button><button id="bQ" class="gh">📋 Задания</button></div>
+<div id="joy"><div id="knob"></div></div>
+<button id="act" disabled>—</button>
+<div id="panel"><div id="box"></div></div>
+<div id="toast"></div>
+<script type="module" src="js/main.js"></script>
+</body></html>
