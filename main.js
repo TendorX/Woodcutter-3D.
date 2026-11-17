@@ -1,3 +1,4 @@
+
 import * as THREE from 'three';
 import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
 import { CFG } from './config.js';
@@ -47,7 +48,7 @@ for (const x of [-3, -1, 1, 3, 5.4]) col.push({ x: CV.x + x, z: CV.z, r: x > 5 ?
 ring(CV.x - 4.8, CV.z, 0x27e0ff);
 
 
- // магазин — новая 3D-модель
+// магазин — новая 3D-модель
 const shG = new THREE.Group();
 shG.position.set(SH.x, 0, SH.z);
 scene.add(shG);
@@ -131,6 +132,99 @@ for (let i = 0; i < 26; i++) { const a = rnd() * 6.283, d = 5 + rnd() * 52; add(
 // ---------- персонаж ----------
 const P = new THREE.Group(); scene.add(P); P.position.set(0, 0, 4);
 const characterVisual = new THREE.Group(); P.add(characterVisual);
+
+// ---------- здоровье персонажа ----------
+const PLAYER_MAX_HP = 100;
+let playerHp = PLAYER_MAX_HP;
+
+// Создаём Canvas-текстуру для полоски здоровья.
+const healthCanvas = document.createElement('canvas');
+healthCanvas.width = 512;
+healthCanvas.height = 128;
+const healthContext = healthCanvas.getContext('2d');
+const healthTexture = new THREE.CanvasTexture(healthCanvas);
+healthTexture.colorSpace = THREE.SRGBColorSpace;
+
+// Полоска здоровья всегда повёрнута к камере.
+const healthMaterial = new THREE.SpriteMaterial({
+  map: healthTexture,
+  transparent: true,
+  depthTest: false,
+  depthWrite: false
+});
+
+const healthBar = new THREE.Sprite(healthMaterial);
+healthBar.position.set(0, 2.65, 0);
+healthBar.scale.set(1.55, 0.32, 1);
+healthBar.renderOrder = 10;
+P.add(healthBar);
+
+// Обновление внешнего вида полоски.
+function updateHealthBar() {
+  const ctx = healthContext;
+  const w = healthCanvas.width;
+  const h = healthCanvas.height;
+  const percent = Math.max(0, Math.min(1, playerHp / PLAYER_MAX_HP));
+
+  ctx.clearRect(0, 0, w, h);
+
+  // Тёмный фон.
+  ctx.fillStyle = 'rgba(15, 15, 20, 0.9)';
+  ctx.fillRect(4, 4, w - 8, h - 8);
+
+  // Красная полоса здоровья.
+  if (percent > 0) {
+    ctx.fillStyle = '#ed2525';
+    ctx.fillRect(12, 12, (w - 24) * percent, h - 24);
+  }
+
+  // Обводка.
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 7;
+  ctx.strokeRect(4, 4, w - 8, h - 8);
+
+  // Цифры здоровья.
+  ctx.font = 'bold 54px Arial, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineWidth = 5;
+  ctx.strokeStyle = '#171717';
+  ctx.strokeText(`${playerHp}/${PLAYER_MAX_HP}`, w / 2, h / 2);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(`${playerHp}/${PLAYER_MAX_HP}`, w / 2, h / 2);
+
+  healthTexture.needsUpdate = true;
+}
+
+// Установка здоровья.
+function setPlayerHealth(value) {
+  playerHp = Math.max(0, Math.min(PLAYER_MAX_HP, Math.round(value)));
+  updateHealthBar();
+
+  if (playerHp <= 0) {
+    toast('Персонаж потерял всё здоровье!');
+  }
+}
+
+// Получение урона.
+function damagePlayer(amount = 10) {
+  if (playerHp <= 0) return;
+  setPlayerHealth(playerHp - Math.max(0, amount));
+}
+
+// Восстановление здоровья.
+function healPlayer(amount = 10) {
+  setPlayerHealth(playerHp + Math.max(0, amount));
+}
+
+// Делаем функции доступными для будущих игровых механик.
+window.damagePlayer = damagePlayer;
+window.healPlayer = healPlayer;
+window.setPlayerHealth = setPlayerHealth;
+
+// Первоначальное отображение: 100/100.
+updateHealthBar();
+
 let characterMixer = null, walkAction = null, runAction = null, idleAction = null;
 let characterReady = false;
 const axeG = new THREE.Group(); axeG.position.set(0.48, 1.05, 0.18); P.add(axeG);
